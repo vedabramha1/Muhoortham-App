@@ -426,11 +426,36 @@ async def get_timezones():
 async def check_muhurat(request: MuhooratRequest):
     """Check if a date is auspicious based on birth nakshatra and various factors"""
     try:
-        # Parse date
-        date_parts = request.date.split("-")
-        year = int(date_parts[0])
-        month = int(date_parts[1])
-        day = int(date_parts[2])
+        # Validate and parse date
+        try:
+            date_parts = request.date.split("-")
+            if len(date_parts) != 3:
+                raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+            year = int(date_parts[0])
+            month = int(date_parts[1])
+            day = int(date_parts[2])
+            
+            # Validate date ranges
+            if month < 1 or month > 12:
+                raise HTTPException(status_code=400, detail="Invalid month. Must be between 1 and 12")
+            if day < 1 or day > 31:
+                raise HTTPException(status_code=400, detail="Invalid day. Must be between 1 and 31")
+            if year < 1900 or year > 2100:
+                raise HTTPException(status_code=400, detail="Invalid year. Must be between 1900 and 2100")
+                
+            # Validate the actual date (e.g., Feb 30 is invalid)
+            from datetime import date as date_class
+            date_class(year, month, day)  # This will raise ValueError for invalid dates
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid date: {str(e)}")
+        
+        # Validate nakshatra
+        if request.birth_nakshatra not in NAKSHATRAS:
+            raise HTTPException(status_code=400, detail=f"Invalid nakshatra. Must be one of: {', '.join(NAKSHATRAS)}")
+        
+        # Validate timezone
+        if request.timezone not in TIMEZONE_CONFIG:
+            raise HTTPException(status_code=400, detail=f"Invalid timezone. Must be one of: {', '.join(TIMEZONE_CONFIG.keys())}")
         
         # Get timezone config
         tz_config = TIMEZONE_CONFIG.get(request.timezone, TIMEZONE_CONFIG["IST"])
