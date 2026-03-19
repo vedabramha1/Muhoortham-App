@@ -120,6 +120,7 @@ TIMEZONE_CONFIG = {
 class MuhooratRequest(BaseModel):
     date: str  # Format: YYYY-MM-DD
     birth_nakshatra: str
+    birth_nakshatra_2: Optional[str] = None  # Second person's birth star (optional)
     timezone: str = "IST"
 
 class MuhooratFactor(BaseModel):
@@ -132,10 +133,12 @@ class MuhooratResponse(BaseModel):
     date: str
     weekday: str
     birth_nakshatra: str
+    birth_nakshatra_2: Optional[str] = None
     timezone: str
     overall_verdict: str
     is_auspicious: bool
     factors: List[MuhooratFactor]
+    factors_person_2: Optional[List[MuhooratFactor]] = None  # Factors for second person
     inauspicious_timings: dict
     panchang_details: dict
 
@@ -244,6 +247,41 @@ def calculate_rashi(jd: float) -> tuple:
     
     return rashi_index, rashi_names[rashi_index - 1]
 
+def calculate_lagna(jd: float, lat: float, lon: float) -> tuple:
+    """
+    Calculate Lagna (Ascendant) - the rising sign at a given time and location
+    Returns index (1-12) and name
+    """
+    try:
+        # Calculate houses using Swiss Ephemeris
+        # Use Placidus house system (most common in Vedic astrology adaptations)
+        houses = swe.houses(jd, lat, lon, b'P')
+        ascendant_long = houses[1][0]  # Ascendant is first element of second tuple
+        
+        # Apply ayanamsa for sidereal position
+        ayanamsa = swe.get_ayanamsa(jd)
+        sidereal_asc = (ascendant_long - ayanamsa) % 360
+        
+        lagna_index = int(sidereal_asc / 30) + 1
+        if lagna_index > 12:
+            lagna_index = 1
+            
+    except:
+        # Fallback: estimate lagna based on time of day and sun position
+        sun_long = get_sun_longitude(jd)
+        # Approximate lagna - roughly 1 sign every 2 hours from sunrise
+        hours_from_midnight = (jd % 1) * 24
+        lagna_offset = int(hours_from_midnight / 2)
+        sidereal_asc = (sun_long + lagna_offset * 30) % 360
+        lagna_index = int(sidereal_asc / 30) + 1
+        if lagna_index > 12:
+            lagna_index = 1
+    
+    lagna_names = ["Mesha", "Vrishabha", "Mithuna", "Karka", "Simha", "Kanya",
+                   "Tula", "Vrishchika", "Dhanu", "Makara", "Kumbha", "Meena"]
+    
+    return lagna_index, lagna_names[lagna_index - 1]
+
 def get_birth_nakshatra_index(nakshatra_name: str) -> int:
     """Get nakshatra index (1-27) from name"""
     try:
@@ -284,15 +322,24 @@ def calculate_chandrabalam(birth_nakshatra_index: int, day_rashi_index: int) -> 
     
     return count, is_favorable
 
-def calculate_panchaka(tithi_index: int, weekday_index: int, nakshatra_index: int, lagna_index: int = 1) -> tuple:
+def calculate_panchaka(tithi_index: int, weekday_index: int, nakshatra_index: int, lagna_index: int) -> tuple:
     """
-    Calculate Panchaka dosha
-    Sum of tithi + weekday + nakshatra + lagna, mod 9
+    Calculate Panchaka dosha (Panchakarahitam)
+    Formula: (Tithi + Vaara + Nakshatra + Lagnam) / 9
+    
+    Parameters:
+    - tithi_index: 1-30 (lunar day)
+    - weekday_index: 0-6 (Sunday=0 to Saturday=6)
+    - nakshatra_index: 1-27 (Ashwini=1 to Revati=27)
+    - lagna_index: 1-12 (Mesha=1 to Meena=12)
+    
     Good remainders: 0, 3, 5, 7 (Panchaka Rahitam)
+    Bad remainders: 1 (Mrityu), 2 (Agni), 4 (Raja), 6 (Chora), 8 (Roga)
     """
-    # Weekday: Sunday=1, Saturday=7
+    # Weekday: Sunday=1, Monday=2, ... Saturday=7
     vara = weekday_index + 1
     
+    # Calculate total and remainder
     total = tithi_index + vara + nakshatra_index + lagna_index
     remainder = total % 9
     
@@ -304,7 +351,10 @@ def calculate_panchaka(tithi_index: int, weekday_index: int, nakshatra_index: in
     
     is_favorable = remainder in [0, 3, 5, 7]
     
-    return remainder, panchaka_names.get(remainder, "Unknown"), is_favorable
+    # Include calculation details in description
+    calculation_details = f"Tithi({tithi_index}) + Vara({vara}) + Nakshatra({nakshatra_index}) + Lagna({lagna_index}) = {total}, {total} ÷ 9 = remainder {remainder}"
+    
+    return remainder, panchaka_names.get(remainder, "Unknown"), is_favorable, calculation_details
 
 def calculate_rahukalam(sunrise_jd: float, sunset_jd: float, weekday: str, tz_name: str) -> tuple:
     """Calculate Rahukalam timing"""
@@ -453,6 +503,10 @@ async def check_muhurat(request: MuhooratRequest):
         if request.birth_nakshatra not in NAKSHATRAS:
             raise HTTPException(status_code=400, detail=f"Invalid nakshatra. Must be one of: {', '.join(NAKSHATRAS)}")
         
+        # Validate second nakshatra if provided
+        if request.birth_nakshatra_2 and request.birth_nakshatra_2 not in NAKSHATRAS:
+            raise HTTPException(status_code=400, detail=f"Invalid second nakshatra. Must be one of: {', '.join(NAKSHATRAS)}")
+        
         # Validate timezone
         if request.timezone not in TIMEZONE_CONFIG:
             raise HTTPException(status_code=400, detail=f"Invalid timezone. Must be one of: {', '.join(TIMEZONE_CONFIG.keys())}")
@@ -479,14 +533,14 @@ async def check_muhurat(request: MuhooratRequest):
         tithi_index, tithi_name, paksha = calculate_tithi(jd)
         nakshatra_index, nakshatra_name = calculate_nakshatra(jd)
         rashi_index, rashi_name = calculate_rashi(jd)
+        lagna_index, lagna_name = calculate_lagna(jd, lat, lon)
         
         # Get birth nakshatra index
         birth_nakshatra_index = get_birth_nakshatra_index(request.birth_nakshatra)
         
-        # Calculate all factors
+        # Calculate all factors for Person 1
         factors = []
         favorable_count = 0
-        total_factors = 7
         
         # 1. Tarabalam
         tara_num, tara_name, tara_favorable = calculate_tarabalam(birth_nakshatra_index, nakshatra_index)
@@ -510,13 +564,13 @@ async def check_muhurat(request: MuhooratRequest):
         if chandra_favorable:
             favorable_count += 1
         
-        # 3. Panchaka Rahitam
-        panchaka_rem, panchaka_name, panchaka_favorable = calculate_panchaka(tithi_index, weekday_index, nakshatra_index)
+        # 3. Panchaka Rahitam (Tithi + Vara + Nakshatra + Lagna) / 9
+        panchaka_rem, panchaka_name, panchaka_favorable, panchaka_calc = calculate_panchaka(tithi_index, weekday_index, nakshatra_index, lagna_index)
         factors.append(MuhooratFactor(
             name="Panchakarahitam",
-            value=panchaka_name,
+            value=f"{panchaka_name} (remainder {panchaka_rem})",
             is_favorable=panchaka_favorable,
-            description="Panchaka dosha check - combination of Tithi, Vara, and Nakshatra"
+            description=f"Formula: {panchaka_calc}"
         ))
         if panchaka_favorable:
             favorable_count += 1
@@ -542,6 +596,69 @@ async def check_muhurat(request: MuhooratRequest):
         ))
         if not is_tuesday:
             favorable_count += 1
+        
+        # Calculate factors for Person 2 if provided
+        factors_person_2 = None
+        is_auspicious_person_2 = True
+        
+        if request.birth_nakshatra_2:
+            birth_nakshatra_2_index = get_birth_nakshatra_index(request.birth_nakshatra_2)
+            factors_person_2 = []
+            favorable_count_2 = 0
+            
+            # Tarabalam for Person 2
+            tara_num_2, tara_name_2, tara_favorable_2 = calculate_tarabalam(birth_nakshatra_2_index, nakshatra_index)
+            factors_person_2.append(MuhooratFactor(
+                name="Tarabalam",
+                value=f"{tara_name_2} ({tara_num_2})",
+                is_favorable=tara_favorable_2,
+                description=f"Star compatibility based on birth star ({request.birth_nakshatra_2}) and day's star ({nakshatra_name})"
+            ))
+            if tara_favorable_2:
+                favorable_count_2 += 1
+            
+            # Chandrabalam for Person 2
+            chandra_count_2, chandra_favorable_2 = calculate_chandrabalam(birth_nakshatra_2_index, rashi_index)
+            factors_person_2.append(MuhooratFactor(
+                name="Chandrabalam",
+                value=f"Position {chandra_count_2}",
+                is_favorable=chandra_favorable_2,
+                description=f"Moon's strength based on its position in {rashi_name}"
+            ))
+            if chandra_favorable_2:
+                favorable_count_2 += 1
+            
+            # Panchaka is same for both (based on date, not birth star)
+            factors_person_2.append(MuhooratFactor(
+                name="Panchakarahitam",
+                value=f"{panchaka_name} (remainder {panchaka_rem})",
+                is_favorable=panchaka_favorable,
+                description=f"Formula: {panchaka_calc}"
+            ))
+            if panchaka_favorable:
+                favorable_count_2 += 1
+            
+            # Tithi is same for both
+            factors_person_2.append(MuhooratFactor(
+                name="Tithi",
+                value=f"{tithi_name} ({paksha})",
+                is_favorable=not tithi_bad,
+                description=tithi_reason if tithi_bad else "Tithi is favorable for auspicious activities"
+            ))
+            if not tithi_bad:
+                favorable_count_2 += 1
+            
+            # Weekday is same for both
+            factors_person_2.append(MuhooratFactor(
+                name="Weekday",
+                value=weekday,
+                is_favorable=not is_tuesday,
+                description="Tuesday should be avoided for auspicious activities" if is_tuesday else "Weekday is favorable"
+            ))
+            if not is_tuesday:
+                favorable_count_2 += 1
+            
+            is_auspicious_person_2 = favorable_count_2 >= 4 and not is_tuesday and not tithi_bad
         
         # Calculate inauspicious timings
         rahu_start, rahu_end = calculate_rahukalam(sunrise_jd, sunset_jd, weekday, tz_name)
@@ -569,8 +686,15 @@ async def check_muhurat(request: MuhooratRequest):
         # Determine overall verdict
         is_auspicious = favorable_count >= 4 and not is_tuesday and not tithi_bad
         
+        # If second person provided, both must be auspicious
+        if request.birth_nakshatra_2:
+            is_auspicious = is_auspicious and is_auspicious_person_2
+        
         if is_auspicious:
-            verdict = "AUSPICIOUS - Good day for important activities"
+            if request.birth_nakshatra_2:
+                verdict = "AUSPICIOUS - Good day for both persons"
+            else:
+                verdict = "AUSPICIOUS - Good day for important activities"
         else:
             issues = []
             if is_tuesday:
@@ -578,11 +702,19 @@ async def check_muhurat(request: MuhooratRequest):
             if tithi_bad:
                 issues.append(tithi_reason)
             if not tara_favorable:
-                issues.append("Tarabalam unfavorable")
+                issues.append(f"Tarabalam unfavorable for {request.birth_nakshatra}")
             if not chandra_favorable:
-                issues.append("Chandrabalam unfavorable")
+                issues.append(f"Chandrabalam unfavorable for {request.birth_nakshatra}")
             if not panchaka_favorable:
                 issues.append(panchaka_name)
+            
+            # Add issues for person 2
+            if request.birth_nakshatra_2:
+                if not tara_favorable_2:
+                    issues.append(f"Tarabalam unfavorable for {request.birth_nakshatra_2}")
+                if not chandra_favorable_2:
+                    issues.append(f"Chandrabalam unfavorable for {request.birth_nakshatra_2}")
+            
             verdict = f"NOT AUSPICIOUS - Issues: {', '.join(issues)}"
         
         # Sunrise/Sunset times
@@ -593,10 +725,12 @@ async def check_muhurat(request: MuhooratRequest):
             date=request.date,
             weekday=weekday,
             birth_nakshatra=request.birth_nakshatra,
+            birth_nakshatra_2=request.birth_nakshatra_2,
             timezone=request.timezone,
             overall_verdict=verdict,
             is_auspicious=is_auspicious,
             factors=factors,
+            factors_person_2=factors_person_2,
             inauspicious_timings={
                 "rahukalam": {"start": rahu_start, "end": rahu_end},
                 "yamagandam": {"start": yama_start, "end": yama_end},
@@ -607,6 +741,7 @@ async def check_muhurat(request: MuhooratRequest):
                 "tithi": f"{tithi_name} ({paksha})",
                 "nakshatra": nakshatra_name,
                 "rashi": rashi_name,
+                "lagna": lagna_name,
                 "sunrise": sunrise_time.strftime("%I:%M %p"),
                 "sunset": sunset_time.strftime("%I:%M %p")
             }

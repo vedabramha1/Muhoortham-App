@@ -10,6 +10,7 @@ import {
   Modal,
   SafeAreaView,
   StatusBar,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -68,10 +69,12 @@ interface MuhooratResult {
   date: string;
   weekday: string;
   birth_nakshatra: string;
+  birth_nakshatra_2: string | null;
   timezone: string;
   overall_verdict: string;
   is_auspicious: boolean;
   factors: MuhooratFactor[];
+  factors_person_2: MuhooratFactor[] | null;
   inauspicious_timings: {
     rahukalam: { start: string; end: string };
     yamagandam: { start: string; end: string };
@@ -82,6 +85,7 @@ interface MuhooratResult {
     tithi: string;
     nakshatra: string;
     rashi: string;
+    lagna: string;
     sunrise: string;
     sunset: string;
   };
@@ -152,6 +156,8 @@ export default function Index() {
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1);
   const [selectedDay, setSelectedDay] = useState(today.getDate());
   const [selectedNakshatra, setSelectedNakshatra] = useState(NAKSHATRAS[0]);
+  const [selectedNakshatra2, setSelectedNakshatra2] = useState(NAKSHATRAS[1]);
+  const [enableSecondPerson, setEnableSecondPerson] = useState(false);
   const [selectedTimezone, setSelectedTimezone] = useState("IST");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<MuhooratResult | null>(null);
@@ -162,6 +168,7 @@ export default function Index() {
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [showDayPicker, setShowDayPicker] = useState(false);
   const [showNakshatraPicker, setShowNakshatraPicker] = useState(false);
+  const [showNakshatraPicker2, setShowNakshatraPicker2] = useState(false);
   const [showTimezonePicker, setShowTimezonePicker] = useState(false);
 
   const daysInMonth = getDaysInMonth(selectedYear, selectedMonth);
@@ -186,16 +193,22 @@ export default function Index() {
     setResult(null);
 
     try {
+      const requestBody: any = {
+        date: formatDate(),
+        birth_nakshatra: selectedNakshatra,
+        timezone: selectedTimezone,
+      };
+      
+      if (enableSecondPerson) {
+        requestBody.birth_nakshatra_2 = selectedNakshatra2;
+      }
+
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/check-muhurat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          date: formatDate(),
-          birth_nakshatra: selectedNakshatra,
-          timezone: selectedTimezone,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -218,6 +231,39 @@ export default function Index() {
   const getTimezoneLabel = () => {
     return TIMEZONES.find(t => t.value === selectedTimezone)?.label || '';
   };
+
+  const renderFactors = (factors: MuhooratFactor[], title: string) => (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>
+        <Ionicons name="analytics" size={18} color="#FF6B00" /> {title}
+      </Text>
+      {factors.map((factor, index) => (
+        <View key={index} style={styles.factorItem}>
+          <View style={styles.factorHeader}>
+            <Ionicons
+              name={factor.is_favorable ? "checkmark-circle" : "close-circle"}
+              size={24}
+              color={factor.is_favorable ? "#00C851" : "#ff4444"}
+            />
+            <Text style={styles.factorName}>{factor.name}</Text>
+            <View style={[
+              styles.factorBadge,
+              factor.is_favorable ? styles.factorBadgeGood : styles.factorBadgeBad
+            ]}>
+              <Text style={[
+                styles.factorBadgeText,
+                factor.is_favorable ? styles.factorBadgeTextGood : styles.factorBadgeTextBad
+              ]}>
+                {factor.is_favorable ? "GOOD" : "BAD"}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.factorValue}>{factor.value}</Text>
+          <Text style={styles.factorDescription}>{factor.description}</Text>
+        </View>
+      ))}
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -270,8 +316,8 @@ export default function Index() {
             </TouchableOpacity>
           </View>
 
-          {/* Birth Nakshatra */}
-          <Text style={styles.sectionTitle}>Birth Star (Nakshatra)</Text>
+          {/* Birth Nakshatra 1 */}
+          <Text style={styles.sectionTitle}>Birth Star (Person 1)</Text>
           <TouchableOpacity
             style={styles.fullWidthPicker}
             onPress={() => setShowNakshatraPicker(true)}
@@ -280,6 +326,35 @@ export default function Index() {
             <Text style={styles.fullWidthPickerText}>{selectedNakshatra}</Text>
             <Ionicons name="chevron-down" size={20} color="#888" />
           </TouchableOpacity>
+
+          {/* Toggle for Second Person */}
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleLabel}>
+              <Ionicons name="people" size={20} color="#FF6B00" />
+              <Text style={styles.toggleText}>Add Second Person (Spouse)</Text>
+            </View>
+            <Switch
+              value={enableSecondPerson}
+              onValueChange={setEnableSecondPerson}
+              trackColor={{ false: '#333', true: '#FF6B00' }}
+              thumbColor={enableSecondPerson ? '#fff' : '#888'}
+            />
+          </View>
+
+          {/* Birth Nakshatra 2 (Conditional) */}
+          {enableSecondPerson && (
+            <>
+              <Text style={styles.sectionTitle}>Birth Star (Person 2)</Text>
+              <TouchableOpacity
+                style={styles.fullWidthPicker}
+                onPress={() => setShowNakshatraPicker2(true)}
+              >
+                <Ionicons name="star-outline" size={20} color="#FF6B00" />
+                <Text style={styles.fullWidthPickerText}>{selectedNakshatra2}</Text>
+                <Ionicons name="chevron-down" size={20} color="#888" />
+              </TouchableOpacity>
+            </>
+          )}
 
           {/* Timezone */}
           <Text style={styles.sectionTitle}>Timezone</Text>
@@ -340,6 +415,11 @@ export default function Index() {
               <Text style={styles.verdictDate}>
                 {result.weekday}, {result.date}
               </Text>
+              {result.birth_nakshatra_2 && (
+                <Text style={styles.verdictPersons}>
+                  For: {result.birth_nakshatra} & {result.birth_nakshatra_2}
+                </Text>
+              )}
             </View>
 
             {/* Panchang Details */}
@@ -360,6 +440,10 @@ export default function Index() {
                 <Text style={styles.detailValue}>{result.panchang_details.rashi}</Text>
               </View>
               <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Lagna</Text>
+                <Text style={styles.detailValue}>{result.panchang_details.lagna}</Text>
+              </View>
+              <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>Sunrise</Text>
                 <Text style={styles.detailValue}>{result.panchang_details.sunrise}</Text>
               </View>
@@ -369,37 +453,16 @@ export default function Index() {
               </View>
             </View>
 
-            {/* Muhurat Factors */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>
-                <Ionicons name="analytics" size={18} color="#FF6B00" /> Muhurat Analysis
-              </Text>
-              {result.factors.map((factor, index) => (
-                <View key={index} style={styles.factorItem}>
-                  <View style={styles.factorHeader}>
-                    <Ionicons
-                      name={factor.is_favorable ? "checkmark-circle" : "close-circle"}
-                      size={24}
-                      color={factor.is_favorable ? "#00C851" : "#ff4444"}
-                    />
-                    <Text style={styles.factorName}>{factor.name}</Text>
-                    <View style={[
-                      styles.factorBadge,
-                      factor.is_favorable ? styles.factorBadgeGood : styles.factorBadgeBad
-                    ]}>
-                      <Text style={[
-                        styles.factorBadgeText,
-                        factor.is_favorable ? styles.factorBadgeTextGood : styles.factorBadgeTextBad
-                      ]}>
-                        {factor.is_favorable ? "GOOD" : "BAD"}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={styles.factorValue}>{factor.value}</Text>
-                  <Text style={styles.factorDescription}>{factor.description}</Text>
-                </View>
-              ))}
-            </View>
+            {/* Muhurat Factors for Person 1 */}
+            {renderFactors(
+              result.factors.filter(f => !['Rahukalam', 'Varjyam'].includes(f.name)), 
+              result.birth_nakshatra_2 ? `Analysis - ${result.birth_nakshatra}` : 'Muhurat Analysis'
+            )}
+
+            {/* Muhurat Factors for Person 2 */}
+            {result.factors_person_2 && (
+              renderFactors(result.factors_person_2, `Analysis - ${result.birth_nakshatra_2}`)
+            )}
 
             {/* Inauspicious Timings */}
             <View style={styles.card}>
@@ -483,7 +546,16 @@ export default function Index() {
         options={NAKSHATRAS.map(n => ({ label: n, value: n }))}
         selectedValue={selectedNakshatra}
         onSelect={setSelectedNakshatra}
-        title="Select Birth Star"
+        title="Select Birth Star (Person 1)"
+      />
+
+      <CustomPicker
+        visible={showNakshatraPicker2}
+        onClose={() => setShowNakshatraPicker2(false)}
+        options={NAKSHATRAS.map(n => ({ label: n, value: n }))}
+        selectedValue={selectedNakshatra2}
+        onSelect={setSelectedNakshatra2}
+        title="Select Birth Star (Person 2)"
       />
 
       <CustomPicker
@@ -577,6 +649,24 @@ const styles = StyleSheet.create({
     color: '#fff',
     marginLeft: 12,
   },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#0f0f23',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 16,
+  },
+  toggleLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  toggleText: {
+    fontSize: 14,
+    color: '#fff',
+    marginLeft: 10,
+  },
   checkButton: {
     backgroundColor: '#FF6B00',
     borderRadius: 12,
@@ -647,6 +737,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     marginTop: 8,
     fontWeight: '600',
+  },
+  verdictPersons: {
+    fontSize: 14,
+    color: '#FF6B00',
+    marginTop: 8,
+    fontWeight: '500',
   },
   card: {
     backgroundColor: '#16213e',
