@@ -4,7 +4,7 @@
     "slug": "muhoortham-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/shastry-logo.jpg",
+    "icon": "./assets/images/app-logo.jpg",
     "scheme": "muhoortham",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -13,7 +13,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/shastry-logo.jpg",
+        "foregroundImage": "./assets/images/app-logo.jpg",
         "backgroundColor": "#1a1a2e"
       },
       "edgeToEdgeEnabled": true
@@ -21,14 +21,14 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/shastry-logo.jpg"
+      "favicon": "./assets/images/app-logo.jpg"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/shastry-logo.jpg",
+          "image": "./assets/images/app-logo.jpg",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#1a1a2e"

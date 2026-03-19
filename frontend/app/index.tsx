@@ -277,7 +277,7 @@ export default function Index() {
         {/* Header */}
         <View style={styles.header}>
           <Image 
-            source={require('../assets/images/shastry-logo.jpg')} 
+            source={require('../assets/images/app-logo.jpg')} 
             style={styles.logoImage}
           />
           <Text style={styles.headerTitle}>Sri Lalitha Krishna Shastry</Text>
@@ -591,11 +591,9 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'android' ? 40 : 20,
   },
   logoImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 3,
-    borderColor: '#FF6B00',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
   },
   headerTitle: {
     fontSize: 22,
