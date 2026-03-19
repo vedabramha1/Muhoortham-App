@@ -11,6 +11,7 @@ import {
   SafeAreaView,
   StatusBar,
   Switch,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -275,9 +276,12 @@ export default function Index() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Ionicons name="moon" size={40} color="#FF6B00" />
-          <Text style={styles.headerTitle}>Hindu Muhurat</Text>
-          <Text style={styles.headerSubtitle}>Panchang Calculator</Text>
+          <Image 
+            source={require('../assets/images/shastry-logo.jpg')} 
+            style={styles.logoImage}
+          />
+          <Text style={styles.headerTitle}>Sri Lalitha Krishna Shastry</Text>
+          <Text style={styles.headerSubtitle}>Muhoortham App</Text>
         </View>
 
         {/* Input Section */}
@@ -317,7 +321,7 @@ export default function Index() {
           </View>
 
           {/* Birth Nakshatra 1 */}
-          <Text style={styles.sectionTitle}>Birth Star (Person 1)</Text>
+          <Text style={styles.sectionTitle}>Birth Star (Nakshatra)</Text>
           <TouchableOpacity
             style={styles.fullWidthPicker}
             onPress={() => setShowNakshatraPicker(true)}
@@ -331,7 +335,7 @@ export default function Index() {
           <View style={styles.toggleRow}>
             <View style={styles.toggleLabel}>
               <Ionicons name="people" size={20} color="#FF6B00" />
-              <Text style={styles.toggleText}>Add Second Person (Spouse)</Text>
+              <Text style={styles.toggleText}>Check for Spouse also</Text>
             </View>
             <Switch
               value={enableSecondPerson}
@@ -586,16 +590,25 @@ const styles = StyleSheet.create({
     paddingVertical: 30,
     paddingTop: Platform.OS === 'android' ? 40 : 20,
   },
+  logoImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 3,
+    borderColor: '#FF6B00',
+  },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#fff',
-    marginTop: 10,
+    marginTop: 12,
+    textAlign: 'center',
   },
   headerSubtitle: {
-    fontSize: 16,
+    fontSize: 18,
     color: '#FF6B00',
     marginTop: 4,
+    fontWeight: '600',
   },
   inputSection: {
     backgroundColor: '#16213e',
